@@ -1,12 +1,10 @@
 """
 Created: 9-AUG-2026
-Updated: 9-AUG-2026
+Updated: 10-AUG-2026
 Contact: admin@cusaonline.ca
 """
 
 import os
-from wsgiref import headers
-
 import requests
 
 def gtfs_schedule_request():
