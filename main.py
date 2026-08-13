@@ -1,12 +1,13 @@
 """
 Created: 9-AUG-2026
-Updated: 15-AUG-2026
+Updated: 16-AUG-2026
 Contact: admin@cusaonline.ca
 """
 
 import os
 import requests
 from google.transit import gtfs_realtime_pb2
+import json
 
 def gtfs_schedule_request():
     return requests.get("https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip")
@@ -25,8 +26,9 @@ def gtfs_schedule_update():
         s.write(gtfs_schedule_request().content)
 
 def gtfs_realtime_update():
-    with open('gtfsUpdate.json', 'bw+') as r:
-        r.write(gtfs_realtime_request('json').content)
+    with open('gtfsUpdate.json', 'w+') as r:
+        js = json.loads(gtfs_realtime_request().content)
+        r.write(json.dumps(js, indent=2))
 
 if __name__ == '__main__':
 
