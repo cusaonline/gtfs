@@ -6,6 +6,7 @@ Contact: admin@cusaonline.ca
 
 import os
 import requests
+from google.transit import gtfs_realtime_pb2
 
 def gtfs_schedule_request():
     return requests.get("https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip")
@@ -22,8 +23,15 @@ def gtfs_realtime_request(format = 'json'):
 
 if __name__ == '__main__':
 
-    with open('gtfsStatic.zip', 'ba+') as s:
-        s.write(gtfs_schedule_request().content)
+    # with open('gtfsStatic.zip', 'ba+') as s:
+    #     s.write(gtfs_schedule_request().content)
+    #
+    # with open('gtfsUpdate.json', 'ba+') as r:
+    #     r.write(gtfs_realtime_request().content)
 
-    with open('gtfsUpdate.json', 'ba+') as r:
-        r.write(gtfs_realtime_request().content)
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(gtfs_realtime_request('protobuf').content)
+
+    for entity in feed.entity:
+        if entity.HasField('trip_update'):
+            print(entity.trip_update)
