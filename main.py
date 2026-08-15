@@ -1,6 +1,6 @@
 """
 Created: 9-AUG-2026
-Updated: 10-AUG-2026
+Updated: 15-AUG-2026
 Contact: admin@cusaonline.ca
 """
 
@@ -10,9 +10,10 @@ import requests
 def gtfs_schedule_request():
     return requests.get("https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip")
 
-def gtfs_realtime_request():
+# format can be 'json' or 'protobuf'
+def gtfs_realtime_request(format = 'json'):
+    param = {'format': format}
     api_key = os.getenv('OC_API_KEY')
-    param = {'format': 'json'}
     header = {'Ocp-Apim-Subscription-Key': api_key}
 
     return requests.get("https://nextrip-public-api.azure-api.net/octranspo/gtfs-rt-tp/beta/v1/TripUpdates",
