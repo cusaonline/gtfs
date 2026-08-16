@@ -20,14 +20,18 @@ def gtfs_realtime_request(format = 'json'):
     return requests.get("https://nextrip-public-api.azure-api.net/octranspo/gtfs-rt-tp/beta/v1/TripUpdates",
                         params=param, headers=header)
 
+def gtfs_schedule_update():
+    with open('gtfsStatic.zip', 'ba+') as s:
+        s.write(gtfs_schedule_request().content)
+
+def gtfs_realtime_update():
+    with open('gtfsUpdate.json', 'ba+') as r:
+        r.write(gtfs_realtime_request('json').content)
 
 if __name__ == '__main__':
 
-    # with open('gtfsStatic.zip', 'ba+') as s:
-    #     s.write(gtfs_schedule_request().content)
-    #
-    # with open('gtfsUpdate.json', 'ba+') as r:
-    #     r.write(gtfs_realtime_request().content)
+    gtfs_schedule_update()
+    gtfs_realtime_update()
 
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(gtfs_realtime_request('protobuf').content)
