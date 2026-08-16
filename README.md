@@ -3,5 +3,6 @@ The objective of this project is to create a (pretty!) bus tracker for OCTranspo
 
 ## Setup
 0. Clone the repository (duh)
-1. Set an environment variable in your operating system PATH, or in your IDE:
+1. Install all dependencies from `requirements.txt`
+2. Set an environment variable in your operating system PATH, or in your IDE:
 `OC_API_KEY= <api key from https://nextrip-public-api.developer.azure-api.net/ here!>`
