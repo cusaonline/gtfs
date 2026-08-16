@@ -1,2 +1,14 @@
-/gtfsStatic.zip
-/gtfsUpdate.json
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.lock
+
+# Virtual environments
+.venv
+
+# IDE
+.idea

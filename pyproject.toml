@@ -1,0 +1,40 @@
+[project]
+name = "cusa-gtfs"
+version = "0.1.0"
+description = "GTFS Updates for OC Transpo routes."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "requests>=2.34.2",
+]
+
+[tool.ruff]
+# Because PEP8's 79 is stupid; this language depends on nesting via indentation.
+# Because the average 80 char off-by-one is still silly for the above reason.
+# Because Black's 88 is only 10% over the off-by-one.
+line-length = 90
+
+# And no, there isn't a rule to force the sensible multilining of command args.
+# See: https://github.com/astral-sh/ruff/issues/24611
+
+[tool.ruff.lint]
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+select = [
+    "ANN", # flake8-annotations
+    "B", # flake8-bugbear
+    "BLE001", # Blind Exception Catch
+    "F", # Pyflakes
+    "I001", # isort; Unsorted Imports
+    "N", # pep8-naming
+    "PERF", # Perflint; Performance patterns
+    "PLR0917", # Refactor; Too many positional args
+    "RUF", # Ruff
+    "S", # flake8-badit; Suspicious/Dangerous actions
+    "UP", # pyupgrade; Deprecations
+]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
