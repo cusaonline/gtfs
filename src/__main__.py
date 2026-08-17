@@ -22,12 +22,12 @@ def gtfs_realtime_request(format = 'json'):
                         params=param, headers=header)
 
 def gtfs_schedule_update():
-    with open('../gtfs_static.zip', 'bw+') as s:
+    with open('gtfs_static.zip', 'bw+') as s:
         s.write(gtfs_schedule_request().content)
 
 def gtfs_realtime_update():
-    with open('../gtfs_update.json', 'w+') as r:
-        js = json.loads(gtfs_realtime_request().content)
+    with open('gtfs_update.json', 'w+') as r:
+        js = json.loads(gtfs_realtime_request('json').content)
         r.write(json.dumps(js, indent=2))
 
 if __name__ == '__main__':
@@ -35,9 +35,10 @@ if __name__ == '__main__':
     gtfs_schedule_update()
     gtfs_realtime_update()
 
-    feed = gtfs_realtime_pb2.FeedMessage()
-    feed.ParseFromString(gtfs_realtime_request('protobuf').content)
-
-    for entity in feed.entity:
-        if entity.HasField('trip_update'):
-            print(entity.trip_update)
+    # feed = gtfs_realtime_pb2.FeedMessage()
+    # feed.ParseFromString(gtfs_realtime_request('protobuf').content)
+    #
+    # for entity in feed.entity:
+    #     if entity.HasField('trip_update'):
+    #         for stop_time_update in entity.trip_update.stop_time_update:
+    #             print(stop_time_update)
