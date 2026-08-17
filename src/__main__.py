@@ -22,11 +22,11 @@ def gtfs_realtime_request(format = 'json'):
                         params=param, headers=header)
 
 def gtfs_schedule_update():
-    with open('gtfsStatic.zip', 'bw+') as s:
+    with open('../gtfs_static.zip', 'bw+') as s:
         s.write(gtfs_schedule_request().content)
 
 def gtfs_realtime_update():
-    with open('gtfsUpdate.json', 'w+') as r:
+    with open('../gtfs_update.json', 'w+') as r:
         js = json.loads(gtfs_realtime_request().content)
         r.write(json.dumps(js, indent=2))
 
