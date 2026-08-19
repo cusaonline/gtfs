@@ -1,6 +1,6 @@
 """
 Created: 9-AUG-2026
-Updated: 17-AUG-2026
+Updated: 19-AUG-2026
 Contact: admin@cusaonline.ca
 """
 
@@ -8,6 +8,9 @@ import os
 import requests
 from google.transit import gtfs_realtime_pb2
 import json
+import zipfile
+import sqlite3
+import pandas
 
 def gtfs_schedule_request():
     return requests.get("https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip")
@@ -30,15 +33,21 @@ def gtfs_realtime_update():
         js = json.loads(gtfs_realtime_request('json').content)
         r.write(json.dumps(js, indent=2))
 
+def gtfs_initialize_database():
+    gtfs_schedule_update()
+
+    with zipfile.ZipFile('gtfs_static.zip', 'r') as zipf:
+        zipf.extractall('gtfs_static')
+
+    with sqlite3.connect('gtfs.db') as conn:
+        for file in os.listdir('gtfs_static'):
+            data = pandas.read_csv('gtfs_static/' + file, low_memory=False)
+            data.to_sql(file.split('.')[0], conn, index=False, if_exists='replace')
+
 if __name__ == '__main__':
 
-    gtfs_schedule_update()
+    gtfs_initialize_database()
     gtfs_realtime_update()
 
-    # feed = gtfs_realtime_pb2.FeedMessage()
-    # feed.ParseFromString(gtfs_realtime_request('protobuf').content)
-    #
-    # for entity in feed.entity:
-    #     if entity.HasField('trip_update'):
-    #         for stop_time_update in entity.trip_update.stop_time_update:
-    #             print(stop_time_update)
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(gtfs_realtime_request('protobuf').content)
