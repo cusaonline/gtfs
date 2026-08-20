@@ -13,6 +13,7 @@ import sqlite3
 import pandas
 import datetime
 from operator import itemgetter
+import time
 
 def gtfs_schedule_request():
     return requests.get("https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip")
@@ -90,7 +91,8 @@ def gtfs_get_info(feed, conn, stop):
                     if update.HasField('departure') and update.departure.HasField('time'):
                         dprt_time = update.departure.time
                     stop_time = max(arrv_time, dprt_time)
-                    info.append((route_id, headsign, stop_time))
+                    if (stop_time > time.time()):
+                        info.append((route_id, headsign, stop_time))
     info.sort(key=itemgetter(2))
     return info
 
@@ -109,6 +111,11 @@ if __name__ == '__main__':
                "10146": "TT Centre",
                "10145": "Stadium"}
 
-    gtfs_signboard_update(stop_list)
+    os.system('cls')
+
+    while True:
+        gtfs_signboard_update(stop_list)
+        time.sleep(30)
+        os.system('cls')
 
 
