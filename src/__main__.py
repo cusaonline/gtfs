@@ -1,6 +1,6 @@
 """
 Created: 9-AUG-2026
-Updated: 20-AUG-2026
+Updated: 21-AUG-2026
 Contact: admin@cusaonline.ca
 """
 
@@ -14,6 +14,18 @@ import pandas
 import datetime
 from operator import itemgetter
 import time
+from flask import Flask, render_template
+
+# TODO: stop hardcoding all of these values and filenames
+# how the hell do you make a config file?
+stop_list = {"990": "Teraanga",
+               "10737": "Nicole",
+               "10738": "Athletics",
+               "10147": "Nesbitt",
+               "10146": "TT Centre",
+               "10145": "Stadium"}
+
+app = Flask(__name__)
 
 def gtfs_schedule_request():
     return requests.get("https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip")
@@ -55,20 +67,24 @@ def gtfs_signboard_update(stop_list):
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(gtfs_realtime_request('protobuf').content)
 
+    # TODO: un-kludge solution to output to webpage
+    output = ""
+
     with sqlite3.connect('gtfs.db') as conn:
         curr = conn.cursor()
         for stop, name in stop_list.items():
             for row in curr.execute('SELECT * FROM stops WHERE stop_id = :stop', {'stop': stop}):
-                print("%s (%s): "%(name, row[1] + ("%s"%row[14] if row[14] else "")), end="")
+                output += "%s (%s): "%(name, row[1] + ("%s"%row[14] if row[14] else ""))
                 info = gtfs_get_info(feed, conn, stop)
                 for x in range(len(info)):
 
-                    print("%s %s @ %s"%(info[x][0], info[x][1], datetime.datetime.fromtimestamp(info[x][2]).strftime("%H:%M")), end="")
+                    output += "%s %s @ %s"%(info[x][0], info[x][1], datetime.datetime.fromtimestamp(info[x][2]).strftime("%H:%M"))
 
                     if x == len(info)-1:
-                        print(".")
+                        output += ".\n"
                     else:
-                        print(", ", end="")
+                        output += ", "
+    return output
 
 def gtfs_get_info(feed, conn, stop):
     info = list()
@@ -91,31 +107,21 @@ def gtfs_get_info(feed, conn, stop):
                     if update.HasField('departure') and update.departure.HasField('time'):
                         dprt_time = update.departure.time
                     stop_time = max(arrv_time, dprt_time)
-                    if (stop_time > time.time()):
+                    if stop_time > time.time():
                         info.append((route_id, headsign, stop_time))
     info.sort(key=itemgetter(2))
     return info
 
+@app.route('/')
+def index():
+    return render_template('index.html', signboard=gtfs_signboard_update(stop_list))
 
 if __name__ == '__main__':
 
     # gtfs_initialize_database()
     # gtfs_realtime_update()
 
-    # TODO: stop hardcoding all of these values and filenames
-    # how the hell do you make a config file?
-    stop_list = {"990": "Teraanga",
-               "10737": "Nicole",
-               "10738": "Athletics",
-               "10147": "Nesbitt",
-               "10146": "TT Centre",
-               "10145": "Stadium"}
+    app.run()
 
-    os.system('cls')
-
-    while True:
-        gtfs_signboard_update(stop_list)
-        time.sleep(30)
-        os.system('cls')
 
 
