@@ -4,19 +4,19 @@ Updated: 23-AUG-2026
 Contact: admin@cusaonline.ca
 """
 
-import os
-import requests
-from google.transit import gtfs_realtime_pb2
-import json
-import zipfile
-import sqlite3
-import pandas
-import datetime
-from operator import itemgetter
-import time
-from flask import Flask, render_template
 from dataclasses import dataclass
+from operator import itemgetter
+from zoneinfo import ZoneInfo
+from google.transit import gtfs_realtime_pb2
+from flask import Flask, render_template
+import datetime
+import requests
+import sqlite3
+import zipfile
+import pandas
+import json
 import yaml
+import os
 config = yaml.safe_load(open("config.yaml", 'r'))
 
 @dataclass
@@ -24,7 +24,7 @@ class Trip:
     trip_id: str
     bus_num: str
     is_live: bool
-    bus_time: int
+    bus_time: datetime.datetime
 
 @dataclass
 class Route:
@@ -42,19 +42,17 @@ class Stop:
 
 @dataclass
 class Signboard:
-    sign_time: int
+    sign_time: datetime.datetime
     stops: list[Stop]
 
-# TODO: stop hardcoding all of these values and filenames
-# how the hell do you make a config file?
-stop_list = {"990": "Teraanga",
-               "10737": "Nicole",
-               "10738": "Athletics",
-               "10147": "Nesbitt",
-               "10146": "TT Centre",
-               "10145": "Stadium"}
-
 app = Flask(__name__)
+
+def get_agency_timezone(agency_id = 1) -> datetime.tzinfo | None:
+    with sqlite3.connect('gtfs.db') as conn:
+        for r in conn.execute('SELECT agency_timezone FROM agency WHERE agency_id = :agency_id',
+                              {'agency_id': agency_id}):
+            return ZoneInfo(r[0])
+        return None
 
 def gtfs_schedule_request():
     return requests.get(config['sources']['schedule'])
@@ -93,11 +91,13 @@ def gtfs_initialize_database():
 def signboard_from_schedule() -> Signboard:
     sign = Signboard()
 
+    sign.sign_time = datetime.datetime.now(tz=get_agency_timezone())
     return sign
 
 def signboard_from_realtime() -> Signboard:
     sign = Signboard()
 
+    sign.sign_time = datetime.datetime.now(tz=get_agency_timezone())
     return sign
 
 # TODO: actually integrate schedule data
@@ -145,7 +145,7 @@ def gtfs_get_info(feed, conn, stop):
                     if update.HasField('departure') and update.departure.HasField('time'):
                         dprt_time = update.departure.time
                     stop_time = max(arrv_time, dprt_time)
-                    if stop_time > time.time():
+                    if stop_time > datetime.now().timestamp():
                         info.append((route_id, headsign, stop_time))
     info.sort(key=itemgetter(2))
     return info
@@ -159,7 +159,11 @@ if __name__ == '__main__':
     # gtfs_initialize_database()
     # gtfs_realtime_update()
 
-    app.run()
+    # app.run()
 
+    # sign = signboard_from_realtime()
+    # print(sign)
+
+    pass
 
 
