@@ -1,6 +1,6 @@
 """
 Created: 9-AUG-2026
-Updated: 21-AUG-2026
+Updated: 23-AUG-2026
 Contact: admin@cusaonline.ca
 """
 
@@ -15,6 +15,35 @@ import datetime
 from operator import itemgetter
 import time
 from flask import Flask, render_template
+from dataclasses import dataclass
+import yaml
+config = yaml.safe_load(open("config.yaml", 'r'))
+
+@dataclass
+class Trip:
+    trip_id: str
+    bus_num: str
+    is_live: bool
+    bus_time: int
+
+@dataclass
+class Route:
+    route_id: str
+    route_num: str
+    route_dest: str
+    trips: list[Trip]
+
+@dataclass
+class Stop:
+    stop_id: str
+    stop_num: str
+    stop_name: str
+    routes: list[Route]
+
+@dataclass
+class Signboard:
+    sign_time: int
+    stops: list[Stop]
 
 # TODO: stop hardcoding all of these values and filenames
 # how the hell do you make a config file?
@@ -28,7 +57,7 @@ stop_list = {"990": "Teraanga",
 app = Flask(__name__)
 
 def gtfs_schedule_request():
-    return requests.get("https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip")
+    return requests.get(config['sources']['schedule'])
 
 # TODO: merge the safe requests fork by cutie
 # format can be 'json' or 'protobuf'
@@ -37,8 +66,7 @@ def gtfs_realtime_request(format = 'json'):
     api_key = os.getenv('OC_API_KEY')
     header = {'Ocp-Apim-Subscription-Key': api_key}
 
-    return requests.get("https://nextrip-public-api.azure-api.net/octranspo/gtfs-rt-tp/beta/v1/TripUpdates",
-                        params=param, headers=header)
+    return requests.get(config['sources']['realtime'], params=param, headers=header)
 
 def gtfs_schedule_update():
     with open('gtfs_static.zip', 'bw+') as s:
@@ -61,6 +89,16 @@ def gtfs_initialize_database():
             # TODO: maybe fix this so it doesn't need "high-memory mode"
             data = pandas.read_csv('gtfs_static/' + file, low_memory=False)
             data.to_sql(file.split('.')[0], conn, index=False, if_exists='replace')
+
+def signboard_from_schedule() -> Signboard:
+    sign = Signboard()
+
+    return sign
+
+def signboard_from_realtime() -> Signboard:
+    sign = Signboard()
+
+    return sign
 
 # TODO: actually integrate schedule data
 def gtfs_signboard_update(stop_list):

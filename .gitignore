@@ -1,8 +1,11 @@
-# IDE files
-/.idea/
-
 # Data files
-/gtfs_static.zip
-/gtfs_update.json
-/gtfs.db
-/gtfs_static/
+gtfs_static.zip
+gtfs_update.json
+gtfs.db
+gtfs_static/
+
+# IDE
+.idea/
+
+# venv
+.venv/
