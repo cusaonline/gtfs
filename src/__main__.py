@@ -58,9 +58,10 @@ class Stop:
         with sqlite3.connect('gtfs.db') as conn:
             self.stop_num = stop_num if stop_num is not None else None
             self.stop_name = stop_name if stop_name is not None else \
-                                     d if (d := dict(config['signboard']['stops']).get(stop_id) is not None) else \
-                                     e if (e := [row for row in conn.execute('SELECT stop_name FROM stops WHERE stop_id = :stop_id',
-                                                                             {'stop_id': stop_id})][0] is not None) else None
+                                     d if (d := dict((l[0],l[1]) for l in config['signboard']['stops'] if len(l) > 1).get(stop_id)) is not None else \
+                                     e[0][0] if (e := [row for row in conn.execute(
+                                         'SELECT stop_name FROM stops WHERE stop_id = :stop_id',
+                                         {'stop_id': stop_id})]) is not None else None
             self.routes = routes if routes is not None else [] # TODO: implement
 
 
@@ -177,7 +178,7 @@ def gtfs_get_info(feed, conn, stop):
                     if update.HasField('departure') and update.departure.HasField('time'):
                         dprt_time = update.departure.time
                     stop_time = max(arrv_time, dprt_time)
-                    if stop_time > datetime.now().timestamp():
+                    if stop_time > datetime.datetime.now().timestamp():
                         info.append((route_id, headsign, stop_time))
     info.sort(key=itemgetter(2))
     return info
@@ -225,10 +226,15 @@ if __name__ == '__main__':
     # gtfs_initialize_database()
     # gtfs_realtime_update()
 
-    app.run()
+    stop_a = Stop('990')
+
+    print(stop_a.stop_id)
+    print(stop_a.stop_name)
+
+    # app.run()
 
     # sign_a = Signboard(stops=[Stop().stop_id = '990'])
     #
     # sign_b = Signboard()
 
-    # pass
+    pass
