@@ -3,18 +3,17 @@ Created: 9-AUG-2026
 Updated: 24-AUG-2026
 Contact: admin@cusaonline.ca
 """
-
 from dataclasses import dataclass
 from operator import itemgetter, truediv
 from zoneinfo import ZoneInfo
 from google.transit import gtfs_realtime_pb2
 from flask import Flask, render_template
-from typing import Self
 from enum import Enum
 import datetime
 import requests
 import sqlite3
 import zipfile
+import typing
 import pandas
 import json
 import yaml
@@ -49,7 +48,7 @@ class Trip:
         return self.trip_id == other
 
     # if live data provided, or if later trip data provided, overwrites trip
-    def merge_trip(self, trip: Self) -> None:
+    def merge_trip(self, trip: typing.Self) -> None:
         if self == trip and trip.is_live and ((not self.is_live) or (trip.bus_time > self.bus_time)):
             self.trip_id = trip.trip_id
             self.bus_num = trip.bus_num
@@ -57,26 +56,39 @@ class Trip:
             self.is_live = trip.is_live
             self.bus_time = trip.bus_time
 
-
 @dataclass
 class Route:
     def __init__(self,
                  route_id: str,
-                 trip: Trip,
+                 trips: list[Trip],
                  route_num: str | None = None,
                  route_dest: str | None = None
                  ) -> None:
         self.route_id = route_id
-        self.trips = [trip]
-        self.route_num = route_num if route_num is not None else None
-        self.route_dest = route_dest if route_dest is not None else None
-    # TODO: replace with __iter__ functionality in next version
-    def has_trip(self, trip: Trip) -> bool:
-        return any([t for t in self.trips if t == trip])
+        self.trips = trips
+        with sqlite3.connect(config['path']['data'] + 'gtfs.db') as conn:
+            self.route_num = route_num if route_num is not None else \
+                e[0][0] if (e := [row for row in conn.execute(
+                    'SELECT route_short_name FROM routes WHERE route_id = :route_id',
+                    {'route_id': route_id})]) is not None else None
+            self.route_dest = route_dest if route_dest is not None else \
+                e[0][0] if (e := [row for row in conn.execute(
+                    'SELECT stop_code FROM routes WHERE route_id = :route_id',
+                    {'route_id': route_id})]) is not None else None
 
+    def __iter__(self) -> typing.Iterable[Trip]:
+        return iter(self.trips)
+
+    def __eq__(self, other: object) -> bool:
+        return self.route_id == other
+
+    # merge trip if pre-existing, otherwise add trip
     def add_trip(self, trip: Trip) -> None:
-        if trip not in self.trips:
-            self.trips.append(trip)
+        for t in self:
+            if t == trip:
+                t.merge_trip(trip)
+                return
+        self.trips.append(trip)
 
 @dataclass
 class Stop:
@@ -99,6 +111,9 @@ class Stop:
                     'SELECT stop_name FROM stops WHERE stop_id = :stop_id',
                     {'stop_id': stop_id})]) is not None else None
 
+    def __iter__(self) -> typing.Iterable[Route]:
+        return iter(self.routes)
+
     def has_route(self, route_id: str) -> bool:
         return route_id in (r.route_id for r in self.routes)
 
@@ -120,14 +135,13 @@ class Signboard:
 
 app = Flask(__name__)
 
-
 def get_agency_timezone(agency_id: int = 1) -> datetime.tzinfo | None:
-    with sqlite3.connect(config['path']['data']+'gtfs.db') as conn:
-        for r in conn.execute('SELECT agency_timezone FROM agency WHERE agency_id = :agency_id',
-                              {'agency_id': agency_id}):
-            return ZoneInfo(r[0])
-        return None
+    return ZoneInfo(r[0][0]) if (r := db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',
+                                               {'a': agency_id})) is not None else None
 
+def db_query(query: str, params: dict) -> list[tuple] | None:
+    with sqlite3.connect(config['path']['data'] + 'gtfs.db') as conn:
+        return list(conn.execute(query, params))
 
 def gtfs_schedule_request():
     return requests.get(config['sources']['schedule'])
@@ -272,18 +286,32 @@ if __name__ == '__main__':
     # app.run()
 
     # sign_a = Signboard(stops=[Stop().stop_id = '990'])
-    #
+
     # sign_b = Signboard()
 
-    trip_a = Trip('1', '1220', Scheduling.SCHEDULED.value, True, datetime.datetime.now())
-    trip_b = Trip('1', '1220', Scheduling.SCHEDULED.value, False, datetime.datetime.now() + datetime.timedelta(hours=1))
+    trip_a = Trip('1', '2220', Scheduling.SCHEDULED.value, False, datetime.datetime.now())
+    trip_b = Trip('2', '4520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=1))
+    trip_c = Trip('3', '6520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=2))
+    trip_d = Trip('1', '2220', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=3))
 
-    print('trip_a', trip_a.bus_time)
-    print('trip_b', trip_b.bus_time)
+    route_a = Route('10', [trip_a, trip_b])
 
-    route_a = Route('10', trip_a)
-    print(route_a.has_trip(trip_b))
+    print('route a', [x.bus_time for x in route_a])
 
-    print(trip_a.bus_time)
+    route_a.add_trip(trip_d)
+
+
+
+    print(trip_b in route_a)
+    print(trip_c in route_a)
+    print(trip_d in route_a)
+
+    print('route a', [x.bus_time for x in route_a])
+
+    print(get_agency_timezone(1))
+
+    # print(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1}))
+    #
+    # print(type(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0]))
 
     pass
