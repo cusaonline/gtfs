@@ -9,6 +9,7 @@ from operator import itemgetter
 from zoneinfo import ZoneInfo
 from google.transit import gtfs_realtime_pb2
 from flask import Flask, render_template
+from enum import Enum
 import datetime
 import requests
 import sqlite3
@@ -17,14 +18,25 @@ import pandas
 import json
 import yaml
 import os
+
 config = yaml.safe_load(open("config.yaml", 'r'))
+
+
+class Scheduling(Enum):
+    SCHEDULED = 0
+    SKIPPED = 1
+    NO_DATA = 2
+    UNSCHEDULED = 3
+
 
 @dataclass
 class Trip:
     trip_id: str
     bus_num: str
+    scheduling: int
     is_live: bool
     bus_time: datetime.datetime
+
 
 @dataclass
 class Route:
@@ -33,47 +45,76 @@ class Route:
     route_dest: str
     trips: list[Trip]
 
+
 @dataclass
 class Stop:
-    stop_id: str
-    stop_num: str
-    stop_name: str
-    routes: list[Route]
+    def __init__(self,
+                 stop_id: str,
+                 stop_num: str | None = None,
+                 stop_name: str | None = None,
+                 routes: list[Route] | None = None
+                 ) -> None:
+        self.stop_id = stop_id
+        with sqlite3.connect('gtfs.db') as conn:
+            self.stop_num = stop_num if stop_num is not None else None
+            self.stop_name = stop_name if stop_name is not None else \
+                                     d if (d := dict(config['signboard']['stops']).get(stop_id) is not None) else \
+                                     e if (e := [row for row in conn.execute('SELECT stop_name FROM stops WHERE stop_id = :stop_id',
+                                                                             {'stop_id': stop_id})][0] is not None) else None
+            self.routes = routes if routes is not None else [] # TODO: implement
+
 
 @dataclass
 class Signboard:
-    sign_time: datetime.datetime
-    stops: list[Stop]
+    def __init__(self,
+                 stops: list[Stop] | None = None,
+                 sign_time: datetime.datetime | None = None
+                 ) -> None:
+        self.stops = stops if stops is not None else []
+        self.sign_time = sign_time if sign_time is not None else datetime.datetime.now(tz=get_agency_timezone())
+
+    def has_stop(self, stop_id: str) -> bool:
+        return stop_id in (s.stop_id for s in self.stops)
+
+    def add_trip(self, stop_id: str, route_id: str, trip: Trip) -> None:
+        pass
+
 
 app = Flask(__name__)
 
-def get_agency_timezone(agency_id = 1) -> datetime.tzinfo | None:
+
+def get_agency_timezone(agency_id:int=1) -> datetime.tzinfo | None:
     with sqlite3.connect('gtfs.db') as conn:
         for r in conn.execute('SELECT agency_timezone FROM agency WHERE agency_id = :agency_id',
                               {'agency_id': agency_id}):
             return ZoneInfo(r[0])
         return None
 
+
 def gtfs_schedule_request():
     return requests.get(config['sources']['schedule'])
 
+
 # TODO: merge the safe requests fork by cutie
 # format can be 'json' or 'protobuf'
-def gtfs_realtime_request(format = 'json'):
+def gtfs_realtime_request(format='json'):
     param = {'format': format}
     api_key = os.getenv('OC_API_KEY')
     header = {'Ocp-Apim-Subscription-Key': api_key}
 
     return requests.get(config['sources']['realtime'], params=param, headers=header)
 
+
 def gtfs_schedule_update():
     with open('gtfs_static.zip', 'bw+') as s:
         s.write(gtfs_schedule_request().content)
+
 
 def gtfs_realtime_update():
     with open('gtfs_update.json', 'w+') as r:
         js = json.loads(gtfs_realtime_request('json').content)
         r.write(json.dumps(js, indent=2))
+
 
 def gtfs_initialize_database():
     gtfs_schedule_update()
@@ -88,17 +129,6 @@ def gtfs_initialize_database():
             data = pandas.read_csv('gtfs_static/' + file, low_memory=False)
             data.to_sql(file.split('.')[0], conn, index=False, if_exists='replace')
 
-def signboard_from_schedule() -> Signboard:
-    sign = Signboard()
-
-    sign.sign_time = datetime.datetime.now(tz=get_agency_timezone())
-    return sign
-
-def signboard_from_realtime() -> Signboard:
-    sign = Signboard()
-
-    sign.sign_time = datetime.datetime.now(tz=get_agency_timezone())
-    return sign
 
 # TODO: actually integrate schedule data
 def gtfs_signboard_update(stop_list):
@@ -112,17 +142,19 @@ def gtfs_signboard_update(stop_list):
         curr = conn.cursor()
         for stop, name in stop_list.items():
             for row in curr.execute('SELECT * FROM stops WHERE stop_id = :stop', {'stop': stop}):
-                output += "%s (%s): "%(name, row[1] + ("%s"%row[14] if row[14] else ""))
+                output += "%s (%s): " % (name, row[1] + ("%s" % row[14] if row[14] else ""))
                 info = gtfs_get_info(feed, conn, stop)
                 for x in range(len(info)):
 
-                    output += "%s %s @ %s"%(info[x][0], info[x][1], datetime.datetime.fromtimestamp(info[x][2]).strftime("%H:%M"))
+                    output += "%s %s @ %s" % (info[x][0], info[x][1],
+                                              datetime.datetime.fromtimestamp(info[x][2]).strftime("%H:%M"))
 
-                    if x == len(info)-1:
+                    if x == len(info) - 1:
                         output += ".\n"
                     else:
                         output += ", "
     return output
+
 
 def gtfs_get_info(feed, conn, stop):
     info = list()
@@ -150,20 +182,53 @@ def gtfs_get_info(feed, conn, stop):
     info.sort(key=itemgetter(2))
     return info
 
+
+def signboard_from_schedule() -> Signboard:
+    return Signboard(stops=[],
+                     sign_time=datetime.datetime.now(tz=get_agency_timezone()))
+
+
+def signboard_from_realtime() -> Signboard:
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(gtfs_realtime_request('protobuf').content)
+
+    sign = Signboard()
+
+    for entity in feed.entity:
+        if entity.HasField('trip_update'):
+            for update in entity.trip_update.stop_time_update:
+                if update.HasField('stop_id') and update.stop_id in (i[0] for i in config['signboard']['stops']):
+                    trip_id, route_id, scheduled, arrival, departure = None, None, 0, 0, 0
+                    if entity.trip_update.trip.HasField('route_id'):
+                        route_id = entity.trip_update.trip.route_id
+                    if entity.trip_update.trip.HasField('trip_id'):
+                        trip_id = entity.trip_update.trip.trip_id
+                    if entity.trip_update.trip.HasField('schedule_relationship'):
+                        scheduled = entity.trip_update.trip.schedule_relationship
+                    if update.HasField('arrival') and update.arrival.HasField('time'):
+                        arrival = update.arrival.time
+                    if update.HasField('departure') and update.departure.HasField('time'):
+                        departure = update.departure.time
+
+                    stop_time = max(arrival, departure)
+
+                    sign.add_trip((trip_id, route_id, scheduled))
+    return sign
+
+
 @app.route('/')
-def index():
-    return render_template('index.html', signboard=gtfs_signboard_update(stop_list))
+def index() -> str:
+    return render_template('index.html', signboard=signboard_from_realtime())
+
 
 if __name__ == '__main__':
-
     # gtfs_initialize_database()
     # gtfs_realtime_update()
 
-    # app.run()
+    app.run()
 
-    # sign = signboard_from_realtime()
-    # print(sign)
+    # sign_a = Signboard(stops=[Stop().stop_id = '990'])
+    #
+    # sign_b = Signboard()
 
-    pass
-
-
+    # pass

@@ -8,5 +8,10 @@ options:
     display_as_12h: false # TODO: implement
 
 signboard:
-  stop_ids: ['990', '10737', '10738', '10147', '10146', '10145']
-  stop_names: ['Teraanga', 'Nicole', 'Athletics', 'Nesbitt', 'TT Centre', 'Stadium']
+  stops:
+    - ['990', 'Teraanga']
+    - ['10737', 'Nicole']
+    - ['10738', 'Athletics']
+    - ['10147', 'Nesbitt']
+    - ['10146', 'TT Centre']
+    - ['10145', 'Stadium']
