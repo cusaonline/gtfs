@@ -5,10 +5,11 @@ Contact: admin@cusaonline.ca
 """
 
 from dataclasses import dataclass
-from operator import itemgetter
+from operator import itemgetter, truediv
 from zoneinfo import ZoneInfo
 from google.transit import gtfs_realtime_pb2
 from flask import Flask, render_template
+from typing import Self
 from enum import Enum
 import datetime
 import requests
@@ -44,6 +45,18 @@ class Trip:
         self.is_live = is_live
         self.bus_time = bus_time
 
+    def __eq__(self, other: object) -> bool:
+        return self.trip_id == other
+
+    # if live data provided, or if later trip data provided, overwrites trip
+    def merge_trip(self, trip: Self) -> None:
+        if self == trip and trip.is_live and ((not self.is_live) or (trip.bus_time > self.bus_time)):
+            self.trip_id = trip.trip_id
+            self.bus_num = trip.bus_num
+            self.scheduling = trip.scheduling
+            self.is_live = trip.is_live
+            self.bus_time = trip.bus_time
+
 
 @dataclass
 class Route:
@@ -57,8 +70,13 @@ class Route:
         self.trips = [trip]
         self.route_num = route_num if route_num is not None else None
         self.route_dest = route_dest if route_dest is not None else None
+    # TODO: replace with __iter__ functionality in next version
+    def has_trip(self, trip: Trip) -> bool:
+        return any([t for t in self.trips if t == trip])
 
-
+    def add_trip(self, trip: Trip) -> None:
+        if trip not in self.trips:
+            self.trips.append(trip)
 
 @dataclass
 class Stop:
@@ -70,7 +88,7 @@ class Stop:
                  ) -> None:
         self.stop_id = stop_id
         self.routes = routes if routes is not None else []
-        with sqlite3.connect('gtfs.db') as conn:
+        with sqlite3.connect(config['path']['data']+'gtfs.db') as conn:
             self.stop_num = stop_num if stop_num is not None else \
                 e[0][0] if (e := [row for row in conn.execute(
                     'SELECT stop_code FROM stops WHERE stop_id = :stop_id',
@@ -104,7 +122,7 @@ app = Flask(__name__)
 
 
 def get_agency_timezone(agency_id: int = 1) -> datetime.tzinfo | None:
-    with sqlite3.connect('gtfs.db') as conn:
+    with sqlite3.connect(config['path']['data']+'gtfs.db') as conn:
         for r in conn.execute('SELECT agency_timezone FROM agency WHERE agency_id = :agency_id',
                               {'agency_id': agency_id}):
             return ZoneInfo(r[0])
@@ -126,12 +144,12 @@ def gtfs_realtime_request(format='json'):
 
 
 def gtfs_schedule_update():
-    with open('gtfs_static.zip', 'bw+') as s:
+    with open(config['path']['data']+'gtfs_static.zip', 'bw+') as s:
         s.write(gtfs_schedule_request().content)
 
 
 def gtfs_realtime_update():
-    with open('gtfs_update.json', 'w+') as r:
+    with open(config['path']['data']+'gtfs_update.json', 'w+') as r:
         js = json.loads(gtfs_realtime_request('json').content)
         r.write(json.dumps(js, indent=2))
 
@@ -139,14 +157,14 @@ def gtfs_realtime_update():
 def gtfs_initialize_database():
     gtfs_schedule_update()
 
-    with zipfile.ZipFile('gtfs_static.zip', 'r') as zipf:
+    with zipfile.ZipFile(config['path']['data']+'gtfs_static.zip', 'r') as zipf:
         # TODO: maybe clean out the directory before unzipping more files into it
-        zipf.extractall('gtfs_static')
+        zipf.extractall(config['path']['data']+'gtfs_static')
 
-    with sqlite3.connect('gtfs.db') as conn:
-        for file in os.listdir('gtfs_static'):
+    with sqlite3.connect(config['path']['data']+'gtfs.db') as conn:
+        for file in os.listdir(config['path']['data']+'gtfs_static'):
             # TODO: maybe fix this so it doesn't need "high-memory mode"
-            data = pandas.read_csv('gtfs_static/' + file, low_memory=False)
+            data = pandas.read_csv(config['path']['data']+'gtfs_static/' + file, low_memory=False)
             data.to_sql(file.split('.')[0], conn, index=False, if_exists='replace')
 
 
@@ -158,7 +176,7 @@ def gtfs_signboard_update(stop_list):
     # TODO: un-kludge solution to output to webpage
     output = ""
 
-    with sqlite3.connect('gtfs.db') as conn:
+    with sqlite3.connect(config['path']['data']+'gtfs.db') as conn:
         curr = conn.cursor()
         for stop, name in stop_list.items():
             for row in curr.execute('SELECT * FROM stops WHERE stop_id = :stop', {'stop': stop}):
@@ -244,17 +262,28 @@ def index() -> str:
 if __name__ == '__main__':
     # gtfs_initialize_database()
     # gtfs_realtime_update()
-
-    stop_a = Stop('990')
-
-    print(stop_a.stop_id)
-    print(stop_a.stop_name)
-    print(stop_a.stop_num)
+    #
+    # stop_a = Stop('990')
+    #
+    # print(stop_a.stop_id)
+    # print(stop_a.stop_name)
+    # print(stop_a.stop_num)
 
     # app.run()
 
     # sign_a = Signboard(stops=[Stop().stop_id = '990'])
     #
     # sign_b = Signboard()
+
+    trip_a = Trip('1', '1220', Scheduling.SCHEDULED.value, True, datetime.datetime.now())
+    trip_b = Trip('1', '1220', Scheduling.SCHEDULED.value, False, datetime.datetime.now() + datetime.timedelta(hours=1))
+
+    print('trip_a', trip_a.bus_time)
+    print('trip_b', trip_b.bus_time)
+
+    route_a = Route('10', trip_a)
+    print(route_a.has_trip(trip_b))
+
+    print(trip_a.bus_time)
 
     pass

@@ -2,6 +2,9 @@ sources:
   schedule: https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip
   realtime: https://nextrip-public-api.azure-api.net/octranspo/gtfs-rt-tp/beta/v1/TripUpdates
 
+path:
+  data: './data/'
+
 options:
   time:
     display_as_diff: true # TODO: implement
