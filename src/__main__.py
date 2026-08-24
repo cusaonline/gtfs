@@ -1,6 +1,6 @@
 """
 Created: 9-AUG-2026
-Updated: 23-AUG-2026
+Updated: 24-AUG-2026
 Contact: admin@cusaonline.ca
 """
 
@@ -31,19 +31,33 @@ class Scheduling(Enum):
 
 @dataclass
 class Trip:
-    trip_id: str
-    bus_num: str
-    scheduling: int
-    is_live: bool
-    bus_time: datetime.datetime
+    def __init__(self,
+                 trip_id: str,
+                 bus_num: str,
+                 scheduling: int,
+                 is_live: bool,
+                 bus_time: datetime.datetime
+                 ) -> None:
+        self.trip_id = trip_id
+        self.bus_num = bus_num
+        self.scheduling = scheduling
+        self.is_live = is_live
+        self.bus_time = bus_time
 
 
 @dataclass
 class Route:
-    route_id: str
-    route_num: str
-    route_dest: str
-    trips: list[Trip]
+    def __init__(self,
+                 route_id: str,
+                 trip: Trip,
+                 route_num: str | None = None,
+                 route_dest: str | None = None
+                 ) -> None:
+        self.route_id = route_id
+        self.trips = [trip]
+        self.route_num = route_num if route_num is not None else None
+        self.route_dest = route_dest if route_dest is not None else None
+
 
 
 @dataclass
@@ -55,15 +69,20 @@ class Stop:
                  routes: list[Route] | None = None
                  ) -> None:
         self.stop_id = stop_id
+        self.routes = routes if routes is not None else []
         with sqlite3.connect('gtfs.db') as conn:
-            self.stop_num = stop_num if stop_num is not None else None
+            self.stop_num = stop_num if stop_num is not None else \
+                e[0][0] if (e := [row for row in conn.execute(
+                    'SELECT stop_code FROM stops WHERE stop_id = :stop_id',
+                    {'stop_id': stop_id})]) is not None else None
             self.stop_name = stop_name if stop_name is not None else \
-                                     d if (d := dict((l[0],l[1]) for l in config['signboard']['stops'] if len(l) > 1).get(stop_id)) is not None else \
-                                     e[0][0] if (e := [row for row in conn.execute(
-                                         'SELECT stop_name FROM stops WHERE stop_id = :stop_id',
-                                         {'stop_id': stop_id})]) is not None else None
-            self.routes = routes if routes is not None else [] # TODO: implement
+                d if (d := dict((l[0], l[1]) for l in config['signboard']['stops'] if len(l) > 1).get(stop_id)) is not None else \
+                e[0][0] if (e := [row for row in conn.execute(
+                    'SELECT stop_name FROM stops WHERE stop_id = :stop_id',
+                    {'stop_id': stop_id})]) is not None else None
 
+    def has_route(self, route_id: str) -> bool:
+        return route_id in (r.route_id for r in self.routes)
 
 @dataclass
 class Signboard:
@@ -84,7 +103,7 @@ class Signboard:
 app = Flask(__name__)
 
 
-def get_agency_timezone(agency_id:int=1) -> datetime.tzinfo | None:
+def get_agency_timezone(agency_id: int = 1) -> datetime.tzinfo | None:
     with sqlite3.connect('gtfs.db') as conn:
         for r in conn.execute('SELECT agency_timezone FROM agency WHERE agency_id = :agency_id',
                               {'agency_id': agency_id}):
@@ -230,6 +249,7 @@ if __name__ == '__main__':
 
     print(stop_a.stop_id)
     print(stop_a.stop_name)
+    print(stop_a.stop_num)
 
     # app.run()
 

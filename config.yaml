@@ -10,7 +10,7 @@ options:
 signboard:
   stops:
     - ['990', 'Teraanga']
-    - ['10737', 'Nicole']
+    - ['10737', 'Nicol']
     - ['10738', 'Athletics']
     - ['10147', 'Nesbitt']
     - ['10146', 'TT Centre']
