@@ -34,30 +34,34 @@ class Trip:
     def __init__(self,
                  trip_id: str,
                  headsign: str,
-                 bus_num: str,
-                 scheduling: int,
                  is_live: bool,
+                 scheduling: int,
+                 bus_num: str,
                  bus_time: datetime.datetime
                  ) -> None:
         self.trip_id = trip_id
         self.headsign = headsign
-        self.bus_num = bus_num
-        self.scheduling = scheduling
         self.is_live = is_live
+        self.scheduling = scheduling
+        self.bus_num = bus_num
         self.bus_time = bus_time
 
     def __eq__(self, other: object) -> bool:
         return self.trip_id == other
 
     # if live data provided, or if later trip data provided, overwrites trip
-    def merge_trip(self, trip: typing.Self) -> None:
+    def merge_trip(self, trip: typing.Self) -> bool:
         if self == trip and trip.is_live and ((not self.is_live) or (trip.bus_time > self.bus_time)):
+            # TODO: look for more compact way to copy this info over
             self.trip_id = trip.trip_id
             self.headsign = trip.headsign
-            self.bus_num = trip.bus_num
-            self.scheduling = trip.scheduling
             self.is_live = trip.is_live
+            self.scheduling = trip.scheduling
+            self.bus_num = trip.bus_num
             self.bus_time = trip.bus_time
+            return True
+        else:
+            return False
 
 @dataclass
 class Route:
