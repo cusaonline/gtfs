@@ -33,12 +33,14 @@ class Scheduling(Enum):
 class Trip:
     def __init__(self,
                  trip_id: str,
+                 headsign: str,
                  bus_num: str,
                  scheduling: int,
                  is_live: bool,
                  bus_time: datetime.datetime
                  ) -> None:
         self.trip_id = trip_id
+        self.headsign = headsign
         self.bus_num = bus_num
         self.scheduling = scheduling
         self.is_live = is_live
@@ -51,6 +53,7 @@ class Trip:
     def merge_trip(self, trip: typing.Self) -> None:
         if self == trip and trip.is_live and ((not self.is_live) or (trip.bus_time > self.bus_time)):
             self.trip_id = trip.trip_id
+            self.headsign = trip.headsign
             self.bus_num = trip.bus_num
             self.scheduling = trip.scheduling
             self.is_live = trip.is_live
@@ -62,7 +65,7 @@ class Route:
                  route_id: str,
                  trips: list[Trip],
                  route_num: str | None = None,
-                 route_dest: str | None = None
+                 route_dir: int | None = None
                  ) -> None:
         self.route_id = route_id
         self.trips = trips
@@ -71,10 +74,10 @@ class Route:
                 e[0][0] if (e := [row for row in conn.execute(
                     'SELECT route_short_name FROM routes WHERE route_id = :route_id',
                     {'route_id': route_id})]) is not None else None
-            self.route_dest = route_dest if route_dest is not None else \
-                e[0][0] if (e := [row for row in conn.execute(
-                    'SELECT stop_code FROM routes WHERE route_id = :route_id',
-                    {'route_id': route_id})]) is not None else None
+            # self.route_dest = route_dest if route_dest is not None else \
+            #     e[0][0] if (e := [row for row in conn.execute(
+            #         'SELECT stop_code FROM routes WHERE route_id = :route_id',
+            #         {'route_id': route_id})]) is not None else None
 
     def __iter__(self) -> typing.Iterable[Trip]:
         return iter(self.trips)
@@ -276,18 +279,8 @@ def index() -> str:
 if __name__ == '__main__':
     # gtfs_initialize_database()
     # gtfs_realtime_update()
-    #
-    # stop_a = Stop('990')
-    #
-    # print(stop_a.stop_id)
-    # print(stop_a.stop_name)
-    # print(stop_a.stop_num)
 
     # app.run()
-
-    # sign_a = Signboard(stops=[Stop().stop_id = '990'])
-
-    # sign_b = Signboard()
 
     trip_a = Trip('1', '2220', Scheduling.SCHEDULED.value, False, datetime.datetime.now())
     trip_b = Trip('2', '4520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=1))
@@ -310,8 +303,8 @@ if __name__ == '__main__':
 
     print(get_agency_timezone(1))
 
-    # print(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1}))
-    #
-    # print(type(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0]))
+    print(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0])
+
+    print(type(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0]))
 
     pass
