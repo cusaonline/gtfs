@@ -21,8 +21,7 @@ import os
 
 config = yaml.safe_load(open("config.yaml", 'r'))
 
-
-class Scheduling(Enum):
+class TripType(Enum):
     SCHEDULED = 0
     ADDED = 1 # deprecated
     UNSCHEDULED = 2
@@ -32,21 +31,20 @@ class Scheduling(Enum):
     DELETED = 7
     NEW = 8
 
-
 @dataclass
 class Trip:
     def __init__(self,
                  trip_id: str,
+                 scheduling: TripType,
                  headsign: str,
                  is_live: bool,
-                 scheduling: int,
                  bus_num: str,
                  bus_time: datetime.datetime
                  ) -> None:
         self.trip_id = trip_id
+        self.scheduling = scheduling
         self.headsign = headsign
         self.is_live = is_live
-        self.scheduling = scheduling
         self.bus_num = bus_num
         self.bus_time = bus_time
 
@@ -58,9 +56,9 @@ class Trip:
         if self == trip and trip.is_live and ((not self.is_live) or (trip.bus_time > self.bus_time)):
             # TODO: look for more compact way to copy this info over
             self.trip_id = trip.trip_id
+            self.scheduling = trip.scheduling
             self.headsign = trip.headsign
             self.is_live = trip.is_live
-            self.scheduling = trip.scheduling
             self.bus_num = trip.bus_num
             self.bus_time = trip.bus_time
             return True
@@ -71,12 +69,15 @@ class Trip:
 class Route:
     def __init__(self,
                  route_id: str,
-                 trips: list[Trip],
-                 route_num: str | None = None,
-                 route_dir: int | None = None
+                 route_dir: int,
+                 route_num: str,
+                 trips: list[Trip]
                  ) -> None:
         self.route_id = route_id
+        self.route_dir = route_dir
+        self.route_num = route_num
         self.trips = trips
+
         with sqlite3.connect(config['path']['data'] + 'gtfs.db') as conn:
             self.route_num = route_num if route_num is not None else \
                 e[0][0] if (e := [row for row in conn.execute(
@@ -87,11 +88,11 @@ class Route:
             #         'SELECT stop_code FROM routes WHERE route_id = :route_id',
             #         {'route_id': route_id})]) is not None else None
 
+    def __eq__(self, other: object) -> bool:
+        return (self.route_id, self.route_dir) == other
+
     def __iter__(self) -> typing.Iterable[Trip]:
         return iter(self.trips)
-
-    def __eq__(self, other: object) -> bool:
-        return self.route_id == other
 
     # merge trip if pre-existing, otherwise add trip
     def add_trip(self, trip: Trip) -> None:
@@ -143,7 +144,6 @@ class Signboard:
     def add_trip(self, stop_id: str, route_id: str, trip: Trip) -> None:
         pass
 
-
 app = Flask(__name__)
 
 def get_agency_timezone(agency_id: int = 1) -> datetime.tzinfo | None:
@@ -154,9 +154,11 @@ def db_query(query: str, params: dict) -> list[tuple] | None:
     with sqlite3.connect(config['path']['data'] + 'gtfs.db') as conn:
         return list(conn.execute(query, params))
 
+def route_from_trip(trip: Trip) -> Route:
+    return Route(db_query('SELECT '))
+
 def gtfs_schedule_request():
     return requests.get(config['sources']['schedule'])
-
 
 # TODO: merge the safe requests fork by cutie
 # format can be 'json' or 'protobuf'
@@ -286,9 +288,12 @@ def index() -> str:
 
 if __name__ == '__main__':
     # gtfs_initialize_database()
-    gtfs_realtime_update()
+    # gtfs_realtime_update()
 
     # app.run()
+
+    print(db_query('SELECT route_id, direction_id FROM trips WHERE trip_id = :trip_id',
+                   {'trip_id': '5311110'}))
 
     # trip_a = Trip('1', '2220', Scheduling.SCHEDULED.value, False, datetime.datetime.now())
     # trip_b = Trip('2', '4520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=1))
