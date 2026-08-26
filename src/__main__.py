@@ -1,6 +1,6 @@
 """
 Created: 9-AUG-2026
-Updated: 24-AUG-2026
+Updated: 26-AUG-2026
 Contact: admin@cusaonline.ca
 """
 from dataclasses import dataclass
@@ -24,9 +24,13 @@ config = yaml.safe_load(open("config.yaml", 'r'))
 
 class Scheduling(Enum):
     SCHEDULED = 0
-    SKIPPED = 1
-    NO_DATA = 2
-    UNSCHEDULED = 3
+    ADDED = 1 # deprecated
+    UNSCHEDULED = 2
+    CANCELED = 3
+    REPLACEMENT = 5
+    DUPLICATED = 6
+    DELETED = 7
+    NEW = 8
 
 
 @dataclass
@@ -282,33 +286,33 @@ def index() -> str:
 
 if __name__ == '__main__':
     # gtfs_initialize_database()
-    # gtfs_realtime_update()
+    gtfs_realtime_update()
 
     # app.run()
 
-    trip_a = Trip('1', '2220', Scheduling.SCHEDULED.value, False, datetime.datetime.now())
-    trip_b = Trip('2', '4520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=1))
-    trip_c = Trip('3', '6520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=2))
-    trip_d = Trip('1', '2220', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=3))
-
-    route_a = Route('10', [trip_a, trip_b])
-
-    print('route a', [x.bus_time for x in route_a])
-
-    route_a.add_trip(trip_d)
-
-
-
-    print(trip_b in route_a)
-    print(trip_c in route_a)
-    print(trip_d in route_a)
-
-    print('route a', [x.bus_time for x in route_a])
-
-    print(get_agency_timezone(1))
-
-    print(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0])
-
-    print(type(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0]))
+    # trip_a = Trip('1', '2220', Scheduling.SCHEDULED.value, False, datetime.datetime.now())
+    # trip_b = Trip('2', '4520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=1))
+    # trip_c = Trip('3', '6520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=2))
+    # trip_d = Trip('1', '2220', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=3))
+    #
+    # route_a = Route('10', [trip_a, trip_b])
+    #
+    # print('route a', [x.bus_time for x in route_a])
+    #
+    # route_a.add_trip(trip_d)
+    #
+    #
+    #
+    # print(trip_b in route_a)
+    # print(trip_c in route_a)
+    # print(trip_d in route_a)
+    #
+    # print('route a', [x.bus_time for x in route_a])
+    #
+    # print(get_agency_timezone(1))
+    #
+    # print(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0])
+    #
+    # print(type(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0]))
 
     pass
