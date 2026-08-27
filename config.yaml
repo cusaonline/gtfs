@@ -1,0 +1,20 @@
+sources:
+  schedule: https://oct-gtfs-emasagcnfmcgeham.z01.azurefd.net/public-access/GTFSExport.zip
+  realtime: https://nextrip-public-api.azure-api.net/octranspo/gtfs-rt-tp/beta/v1/TripUpdates
+
+path:
+  data: './data/'
+
+options:
+  time:
+    display_as_diff: true # TODO: implement
+    display_as_12h: false # TODO: implement
+
+signboard:
+  stops:
+    - ['990', 'Teraanga']
+    - ['10737', 'Nicol']
+    - ['10738', 'Athletics']
+    - ['10147', 'Nesbitt']
+    - ['10146', 'TT Centre']
+    - ['10145', 'Stadium']
