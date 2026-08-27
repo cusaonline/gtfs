@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from google.transit import gtfs_realtime_pb2
 from flask import Flask, render_template
 from enum import Enum
-import datetime
+import datetime as dt
 import requests
 import sqlite3
 import zipfile
@@ -21,9 +21,10 @@ import os
 
 config = yaml.safe_load(open("config.yaml", 'r'))
 
+
 class TripType(Enum):
     SCHEDULED = 0
-    ADDED = 1 # deprecated
+    ADDED = 1  # deprecated
     UNSCHEDULED = 2
     CANCELED = 3
     REPLACEMENT = 5
@@ -31,22 +32,23 @@ class TripType(Enum):
     DELETED = 7
     NEW = 8
 
+
 @dataclass
 class Trip:
     def __init__(self,
                  trip_id: str,
-                 scheduling: TripType,
-                 headsign: str,
+                 bus_time: dt.datetime,
                  is_live: bool,
-                 bus_num: str,
-                 bus_time: datetime.datetime
+                 scheduling: TripType = TripType.SCHEDULED,
+                 headsign: str | None = None,
+                 bus_num: str | None = None
                  ) -> None:
         self.trip_id = trip_id
+        self.bus_time = bus_time
+        self.is_live = is_live
         self.scheduling = scheduling
         self.headsign = headsign
-        self.is_live = is_live
         self.bus_num = bus_num
-        self.bus_time = bus_time
 
     def __eq__(self, other: object) -> bool:
         return self.trip_id == other
@@ -56,14 +58,15 @@ class Trip:
         if self == trip and trip.is_live and ((not self.is_live) or (trip.bus_time > self.bus_time)):
             # TODO: look for more compact way to copy this info over
             self.trip_id = trip.trip_id
-            self.scheduling = trip.scheduling
-            self.headsign = trip.headsign
-            self.is_live = trip.is_live
-            self.bus_num = trip.bus_num
             self.bus_time = trip.bus_time
+            self.is_live = trip.is_live
+            self.headsign = e if (e := trip.headsign) is not None else self.headsign
+            self.scheduling = e if (e := trip.scheduling) is not None else self.scheduling
+            self.bus_num = e if (e := trip.bus_num) is not None else self.bus_num
             return True
         else:
             return False
+
 
 @dataclass
 class Route:
@@ -77,16 +80,6 @@ class Route:
         self.route_dir = route_dir
         self.route_num = route_num
         self.trips = trips
-
-        with sqlite3.connect(config['path']['data'] + 'gtfs.db') as conn:
-            self.route_num = route_num if route_num is not None else \
-                e[0][0] if (e := [row for row in conn.execute(
-                    'SELECT route_short_name FROM routes WHERE route_id = :route_id',
-                    {'route_id': route_id})]) is not None else None
-            # self.route_dest = route_dest if route_dest is not None else \
-            #     e[0][0] if (e := [row for row in conn.execute(
-            #         'SELECT stop_code FROM routes WHERE route_id = :route_id',
-            #         {'route_id': route_id})]) is not None else None
 
     def __eq__(self, other: object) -> bool:
         return (self.route_id, self.route_dir) == other
@@ -102,63 +95,143 @@ class Route:
                 return
         self.trips.append(trip)
 
+
 @dataclass
 class Stop:
     def __init__(self,
                  stop_id: str,
-                 stop_num: str | None = None,
-                 stop_name: str | None = None,
-                 routes: list[Route] | None = None
+                 stop_num: str,
+                 stop_name: str,
+                 routes: list[Route]
                  ) -> None:
         self.stop_id = stop_id
-        self.routes = routes if routes is not None else []
-        with sqlite3.connect(config['path']['data']+'gtfs.db') as conn:
-            self.stop_num = stop_num if stop_num is not None else \
-                e[0][0] if (e := [row for row in conn.execute(
-                    'SELECT stop_code FROM stops WHERE stop_id = :stop_id',
-                    {'stop_id': stop_id})]) is not None else None
-            self.stop_name = stop_name if stop_name is not None else \
-                d if (d := dict((l[0], l[1]) for l in config['signboard']['stops'] if len(l) > 1).get(stop_id)) is not None else \
-                e[0][0] if (e := [row for row in conn.execute(
-                    'SELECT stop_name FROM stops WHERE stop_id = :stop_id',
-                    {'stop_id': stop_id})]) is not None else None
+        self.stop_num = stop_num
+        self.stop_name = stop_name
+        self.routes = routes
+
+    def __eq__(self, other: object) -> bool:
+        return self.stop_id == other
 
     def __iter__(self) -> typing.Iterable[Route]:
         return iter(self.routes)
 
-    def has_route(self, route_id: str) -> bool:
-        return route_id in (r.route_id for r in self.routes)
 
 @dataclass
 class Signboard:
     def __init__(self,
-                 stops: list[Stop] | None = None,
-                 sign_time: datetime.datetime | None = None
+                 sign_time: dt.datetime,
+                 stops: list[Stop]
                  ) -> None:
-        self.stops = stops if stops is not None else []
-        self.sign_time = sign_time if sign_time is not None else datetime.datetime.now(tz=get_agency_timezone())
+        self.sign_time = sign_time
+        self.stops = stops
 
-    def has_stop(self, stop_id: str) -> bool:
-        return stop_id in (s.stop_id for s in self.stops)
+    def __iter__(self) -> typing.Iterable[Stop]:
+        return iter(self.stops)
 
-    def add_trip(self, stop_id: str, route_id: str, trip: Trip) -> None:
-        pass
 
 app = Flask(__name__)
 
-def get_agency_timezone(agency_id: int = 1) -> datetime.tzinfo | None:
+
+def get_agency_timezone(agency_id: int = 1) -> dt.tzinfo | None:
     return ZoneInfo(r[0][0]) if (r := db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',
                                                {'a': agency_id})) is not None else None
+
+
+def datetime_from_iso(iso_time: str, day: dt.date = dt.date.today()) -> dt.datetime:
+    hour, minute, second = str.split(iso_time, ':')
+    offset = dt.timedelta(days=int(hour) // 24, hours=int(hour) % 24, minutes=int(minute), seconds=int(second))
+    return dt.datetime.combine(day, dt.time()) + offset
+
 
 def db_query(query: str, params: dict) -> list[tuple] | None:
     with sqlite3.connect(config['path']['data'] + 'gtfs.db') as conn:
         return list(conn.execute(query, params))
 
-def route_from_trip(trip: Trip) -> Route:
-    return Route(db_query('SELECT '))
 
+def scheduled_trip_from_id(trip_id: str, stop_id: str) -> Trip:
+    arrival, departure = \
+    db_query('SELECT arrival_time, departure_time FROM stop_times WHERE trip_id = :trip_id AND stop_id = :stop_id',
+             {'trip_id': trip_id, 'stop_id': stop_id})[0]
+    headsign, = db_query('SELECT trip_headsign FROM trips WHERE trip_id = :trip_id',
+                         {'trip_id': trip_id})[0]
+    return Trip(trip_id, max(datetime_from_iso(arrival), datetime_from_iso(departure)), False, TripType.SCHEDULED,
+                headsign)
+
+
+def route_from_trip(trip: Trip) -> Route:
+    route_id, direction = db_query('SELECT route_id, direction_id FROM trips WHERE trip_id = :trip_id',
+                                   {'trip_id': trip.trip_id})[0]
+    route_name, = db_query('SELECT route_short_name FROM routes WHERE route_id = :route_id',
+                           {'route_id': route_id})[0]
+    return Route(route_id, direction, route_name, [trip])
+
+
+def stop_from_id(stop_id: str) -> Stop:
+    stop_num, stop_name = db_query('SELECT stop_code, stop_name FROM stops WHERE stop_id = :stop_id',
+                                   {'stop_id': stop_id})[0]
+    name_overrides = dict((l[0], l[1]) for l in config['signboard']['stops'] if len(l) > 1)
+    if stop_id in name_overrides:
+        stop_name = name_overrides[stop_id]
+    return Stop(stop_id, stop_num, stop_name, [])
+
+
+def signboard_from_realtime(stop_list: list[str]) -> Signboard:
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(gtfs_realtime_request('protobuf').content)
+
+    rt_signboard = Signboard(dt.datetime.now(tz=get_agency_timezone()), [])
+
+    for entity in feed.entity:
+        if entity.HasField('trip_update'):
+            for update in entity.trip_update.stop_time_update:
+                if update.HasField('stop_id') and update.stop_id in stop_list:
+                    rt_stop_id = update.stop_id
+                    print(entity.trip_update.trip.HasField('trip_id'))
+                    print(entity.trip_update.trip.trip_id)
+                    rt_trip_id = entity.trip_update.trip.trip_id
+                    rt_scheduled = TripType(entity.trip_update.trip.schedule_relationship)
+
+                    print(rt_stop_id, rt_trip_id)
+                    scheduled_trip = scheduled_trip_from_id(rt_trip_id, rt_stop_id)
+
+                    rt_headsign = scheduled_trip.headsign
+                    rt_bus_time = scheduled_trip.bus_time
+                    rt_bus_num = None
+                    if entity.trip_update.HasField('vehicle') and entity.trip_update.vehicle.HasField('id'):
+                        bus_num = entity.trip_update.vehicle.id
+
+                    if update.HasField('arrival') and update.arrival.HasField('time'):
+                        bus_time = dt.datetime.fromtimestamp(update.arrival.time, get_agency_timezone())
+                    if update.HasField('departure') and update.departure.HasField('time'):
+                        bus_time = dt.datetime.fromtimestamp(update.arrival.time, get_agency_timezone())
+
+                    trip_to_add = Trip(rt_trip_id, rt_bus_time, True, rt_scheduled, rt_headsign, rt_bus_num)
+                    route_to_add = route_from_trip(trip_to_add)
+
+                    for stop in rt_signboard:
+                        if stop == rt_stop_id:
+                            if route_to_add not in stop:
+                                stop.routes.append(route_to_add)
+                            else:
+                                for route in stop:
+                                    if route == route_to_add:
+                                        route.add_trip(trip_to_add)
+                                        break
+
+    return rt_signboard
+
+
+# TODO: implement
+def signboard_from_schedule() -> Signboard:
+    pass
+    # return Signboard(stops=[],
+    #                  sign_time=dt.datetime.now(tz=get_agency_timezone()))
+
+
+# TODO: merge or modernize functions south of this line
 def gtfs_schedule_request():
     return requests.get(config['sources']['schedule'])
+
 
 # TODO: merge the safe requests fork by cutie
 # format can be 'json' or 'protobuf'
@@ -171,12 +244,12 @@ def gtfs_realtime_request(format='json'):
 
 
 def gtfs_schedule_update():
-    with open(config['path']['data']+'gtfs_static.zip', 'bw+') as s:
+    with open(config['path']['data'] + 'gtfs_static.zip', 'bw+') as s:
         s.write(gtfs_schedule_request().content)
 
 
 def gtfs_realtime_update():
-    with open(config['path']['data']+'gtfs_update.json', 'w+') as r:
+    with open(config['path']['data'] + 'gtfs_update.json', 'w+') as r:
         js = json.loads(gtfs_realtime_request('json').content)
         r.write(json.dumps(js, indent=2))
 
@@ -184,14 +257,14 @@ def gtfs_realtime_update():
 def gtfs_initialize_database():
     gtfs_schedule_update()
 
-    with zipfile.ZipFile(config['path']['data']+'gtfs_static.zip', 'r') as zipf:
+    with zipfile.ZipFile(config['path']['data'] + 'gtfs_static.zip', 'r') as zipf:
         # TODO: maybe clean out the directory before unzipping more files into it
-        zipf.extractall(config['path']['data']+'gtfs_static')
+        zipf.extractall(config['path']['data'] + 'gtfs_static')
 
-    with sqlite3.connect(config['path']['data']+'gtfs.db') as conn:
-        for file in os.listdir(config['path']['data']+'gtfs_static'):
+    with sqlite3.connect(config['path']['data'] + 'gtfs.db') as conn:
+        for file in os.listdir(config['path']['data'] + 'gtfs_static'):
             # TODO: maybe fix this so it doesn't need "high-memory mode"
-            data = pandas.read_csv(config['path']['data']+'gtfs_static/' + file, low_memory=False)
+            data = pandas.read_csv(config['path']['data'] + 'gtfs_static/' + file, low_memory=False)
             data.to_sql(file.split('.')[0], conn, index=False, if_exists='replace')
 
 
@@ -203,7 +276,7 @@ def gtfs_signboard_update(stop_list):
     # TODO: un-kludge solution to output to webpage
     output = ""
 
-    with sqlite3.connect(config['path']['data']+'gtfs.db') as conn:
+    with sqlite3.connect(config['path']['data'] + 'gtfs.db') as conn:
         curr = conn.cursor()
         for stop, name in stop_list.items():
             for row in curr.execute('SELECT * FROM stops WHERE stop_id = :stop', {'stop': stop}):
@@ -212,7 +285,7 @@ def gtfs_signboard_update(stop_list):
                 for x in range(len(info)):
 
                     output += "%s %s @ %s" % (info[x][0], info[x][1],
-                                              datetime.datetime.fromtimestamp(info[x][2]).strftime("%H:%M"))
+                                              dt.datetime.fromtimestamp(info[x][2]).strftime("%H:%M"))
 
                     if x == len(info) - 1:
                         output += ".\n"
@@ -242,82 +315,28 @@ def gtfs_get_info(feed, conn, stop):
                     if update.HasField('departure') and update.departure.HasField('time'):
                         dprt_time = update.departure.time
                     stop_time = max(arrv_time, dprt_time)
-                    if stop_time > datetime.datetime.now().timestamp():
+                    if stop_time > dt.datetime.now().timestamp():
                         info.append((route_id, headsign, stop_time))
     info.sort(key=itemgetter(2))
     return info
 
 
-def signboard_from_schedule() -> Signboard:
-    return Signboard(stops=[],
-                     sign_time=datetime.datetime.now(tz=get_agency_timezone()))
-
-
-def signboard_from_realtime() -> Signboard:
-    feed = gtfs_realtime_pb2.FeedMessage()
-    feed.ParseFromString(gtfs_realtime_request('protobuf').content)
-
-    sign = Signboard()
-
-    for entity in feed.entity:
-        if entity.HasField('trip_update'):
-            for update in entity.trip_update.stop_time_update:
-                if update.HasField('stop_id') and update.stop_id in (i[0] for i in config['signboard']['stops']):
-                    trip_id, route_id, scheduled, arrival, departure = None, None, 0, 0, 0
-                    if entity.trip_update.trip.HasField('route_id'):
-                        route_id = entity.trip_update.trip.route_id
-                    if entity.trip_update.trip.HasField('trip_id'):
-                        trip_id = entity.trip_update.trip.trip_id
-                    if entity.trip_update.trip.HasField('schedule_relationship'):
-                        scheduled = entity.trip_update.trip.schedule_relationship
-                    if update.HasField('arrival') and update.arrival.HasField('time'):
-                        arrival = update.arrival.time
-                    if update.HasField('departure') and update.departure.HasField('time'):
-                        departure = update.departure.time
-
-                    stop_time = max(arrival, departure)
-
-                    sign.add_trip((trip_id, route_id, scheduled))
-    return sign
-
-
 @app.route('/')
 def index() -> str:
-    return render_template('index.html', signboard=signboard_from_realtime())
+    return render_template('index.html',
+                           signboard=signboard_from_realtime([i[0] for i in config['signboard']['stops']]))
 
 
 if __name__ == '__main__':
     # gtfs_initialize_database()
-    # gtfs_realtime_update()
+    gtfs_realtime_request('json')
 
-    # app.run()
+    sign_a = signboard_from_realtime([i[0] for i in config['signboard']['stops']])
 
-    print(db_query('SELECT route_id, direction_id FROM trips WHERE trip_id = :trip_id',
-                   {'trip_id': '5311110'}))
+    print(sign_a.sign_time)
+    print(sign_a.stops[0].stop_id)
+    print(sign_a.stops[0].routes[0].route_id)
+    print(sign_a.stops[0].routes[0].trips[0].trip_id)
+    print(sign_a.stops[0].routes[0].trips[0].bus_time)
 
-    # trip_a = Trip('1', '2220', Scheduling.SCHEDULED.value, False, datetime.datetime.now())
-    # trip_b = Trip('2', '4520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=1))
-    # trip_c = Trip('3', '6520', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=2))
-    # trip_d = Trip('1', '2220', Scheduling.SCHEDULED.value, True, datetime.datetime.now() + datetime.timedelta(hours=3))
-    #
-    # route_a = Route('10', [trip_a, trip_b])
-    #
-    # print('route a', [x.bus_time for x in route_a])
-    #
-    # route_a.add_trip(trip_d)
-    #
-    #
-    #
-    # print(trip_b in route_a)
-    # print(trip_c in route_a)
-    # print(trip_d in route_a)
-    #
-    # print('route a', [x.bus_time for x in route_a])
-    #
-    # print(get_agency_timezone(1))
-    #
-    # print(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0])
-    #
-    # print(type(db_query('SELECT agency_timezone FROM agency WHERE agency_id = :a',{'a': 1})[0][0]))
-
-    pass
+    app.run()
