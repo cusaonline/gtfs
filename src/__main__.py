@@ -203,7 +203,7 @@ def signboard_from_realtime(stop_list: list[str]) -> Signboard:
                     if update.HasField('arrival') and update.arrival.HasField('time'):
                         rt_bus_time = dt.datetime.fromtimestamp(update.arrival.time, get_agency_timezone())
                     if update.HasField('departure') and update.departure.HasField('time'):
-                        rt_bus_time = dt.datetime.fromtimestamp(update.arrival.time, get_agency_timezone())
+                        rt_bus_time = dt.datetime.fromtimestamp(update.departure.time, get_agency_timezone())
 
                     rt_bus_num = None
 
